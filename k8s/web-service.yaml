@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: hello-world
+spec:
+  selector:
+    app: web
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  # ClusterIP — the AGC Gateway routes to this service internally.
+  # The public IP is on the AGC frontend, not on this service.
+  type: ClusterIP
