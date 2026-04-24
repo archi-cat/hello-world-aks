@@ -1,0 +1,129 @@
+name: Infrastructure — Terraform
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform:
+    name: Terraform Plan & Apply
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=hello-world-aks.tfstate"
+        env:
+          ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+          ARM_USE_OIDC:        true
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Format Templates
+        run: terraform fmt    
+
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var="acr_name=${{ secrets.ACR_NAME }}" \
+            -var="sql_server_name=${{ secrets.SQL_SERVER_NAME }}" \
+            -var="sql_database_name=${{ secrets.SQL_DATABASE_NAME }}" \
+            -var="sql_admin_password=${{ secrets.SQL_ADMIN_PASSWORD }}" \
+            -var="sql_entra_admin_group_name=${{ secrets.SQL_ENTRA_ADMIN_GROUP_NAME }}" \
+            -var="sql_entra_admin_group_object_id=${{ secrets.SQL_ENTRA_ADMIN_OBJECT_ID }}" \
+            -var="alert_email=${{ secrets.ALERT_EMAIL }}" \
+            -out=tfplan
+        env:
+          ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+          ARM_USE_OIDC:        true
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+        env:
+          ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+          ARM_USE_OIDC:        true
+
+      # Store outputs as job outputs so the deploy workflow can use them
+      - name: Export Terraform outputs
+        id: tf_outputs
+        run: |
+          echo "aks_cluster_name=$(terraform output -raw aks_cluster_name)" >> $GITHUB_OUTPUT
+          echo "aks_resource_group=$(terraform output -raw aks_resource_group)" >> $GITHUB_OUTPUT
+          echo "alb_controller_client_id=$(terraform output -raw alb_controller_identity_client_id)" >> $GITHUB_OUTPUT
+          echo "workload_identity_client_id=$(terraform output -raw workload_identity_client_id)" >> $GITHUB_OUTPUT
+          echo "agc_frontend_id=$(terraform output -raw agc_frontend_id)" >> $GITHUB_OUTPUT
+          echo "agc_name=$(terraform output -raw agc_name)" >> $GITHUB_OUTPUT
+        env:
+          ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+          ARM_USE_OIDC:        true
+
+      # Install the ALB Controller into the cluster via Helm.
+      # This cannot be done in Terraform — it is a Helm chart that runs
+      # inside the cluster and watches for Gateway/HTTPRoute resources.
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --name ${{ steps.tf_outputs.outputs.aks_cluster_name }} \
+            --resource-group ${{ steps.tf_outputs.outputs.aks_resource_group }} \
+            --overwrite-existing
+
+      - name: Install ALB Controller via Helm
+        run: |
+          helm repo add azure-alb-system https://azure.github.io/alb-controller/helm
+          helm repo update
+
+          helm upgrade --install alb-controller azure-alb-system/alb-controller \
+            --namespace azure-alb-system \
+            --create-namespace \
+            --set albController.namespace=azure-alb-system \
+            --set albController.podIdentity.clientID=${{ steps.tf_outputs.outputs.alb_controller_client_id }} \
+            --wait \
+            --timeout 5m
+
+      - name: Verify ALB Controller is running
+        run: |
+          kubectl rollout status deployment/alb-controller \
+            -n azure-alb-system \
+            --timeout=120s
