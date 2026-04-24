@@ -57,7 +57,7 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <h1>Hello World!</h1>
-    <p>A two-tier Python application running on Azure App Service.</p>
+    <p>A two-tier Python application running on AKS.</p>
 
     <div class="card">
         <h2>Database connectivity check</h2>
