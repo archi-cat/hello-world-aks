@@ -88,6 +88,12 @@ jobs:
             --resource-group ${{ secrets.AKS_RESOURCE_GROUP }} \
             --overwrite-existing
 
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
       # Retrieve Terraform outputs needed for manifest substitution
       - name: Get Terraform outputs
         id: tf
