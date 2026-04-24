@@ -1,0 +1,22 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: hello-world-gateway
+  namespace: hello-world
+  annotations:
+    # This annotation tells the ALB Controller which AGC frontend
+    # to associate this Gateway with. The value is injected by the
+    # deploy pipeline from terraform output agc_frontend_id
+    alb.networking.azure.io/alb-frontend: "${AGC_FRONTEND_ID}"
+    # The ALB Controller watches for this annotation to know which
+    # AGC resource manages this Gateway
+    alb.networking.azure.io/alb-id: "${AGC_RESOURCE_ID}"
+spec:
+  gatewayClassName: azure-alb-external
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same

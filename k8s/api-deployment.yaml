@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: hello-world
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+        # This label is required on the pod for Workload Identity to inject
+        # the federated token volume and environment variables
+        azure.workload.identity/use: "true"
+    spec:
+      # The pod runs as the service account that is federated to the UAMI.
+      # Without this, the pod cannot obtain an Azure AD token.
+      serviceAccountName: api-service-account
+      containers:
+        - name: api
+          image: "${ACR_NAME}.azurecr.io/hello-world-api:${IMAGE_TAG}"
+          ports:
+            - containerPort: 8000
+          env:
+            - name: SQL_SERVER
+              value: "${SQL_SERVER_NAME}.database.windows.net"
+            - name: SQL_DATABASE
+              value: "${SQL_DATABASE_NAME}"
+            - name: APPLICATIONINSIGHTS_CONNECTION_STRING
+              value: "${API_APP_INSIGHTS_CONNECTION_STRING}"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
