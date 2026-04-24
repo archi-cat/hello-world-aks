@@ -262,7 +262,7 @@ resource "azurerm_monitor_metric_alert" "dtu" {
   description         = "Fires when DTU consumption exceeds 85% for 20 minutes"
   severity            = 2
   frequency           = "PT5M"
-  window_size         = "PT20M"
+  window_size         = "PT30M"
 
   criteria {
     metric_namespace = "Microsoft.Sql/servers/databases"
