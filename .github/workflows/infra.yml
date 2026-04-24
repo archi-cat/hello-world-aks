@@ -111,10 +111,8 @@ jobs:
 
       - name: Install ALB Controller via Helm
         run: |
-          helm repo add azure-alb-system https://azure.github.io/alb-controller/helm
-          helm repo update
-
-          helm upgrade --install alb-controller azure-alb-system/alb-controller \
+          helm upgrade --install alb-controller \
+            oci://mcr.microsoft.com/application-lb/charts/alb-controller \
             --namespace azure-alb-system \
             --create-namespace \
             --set albController.namespace=azure-alb-system \
