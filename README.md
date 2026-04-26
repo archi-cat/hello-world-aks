@@ -26,7 +26,7 @@ AKS Cluster (aks-hello-world)
         Azure SQL Database (Basic, 5 DTUs)
 ```
 
-Both pods push telemetry to their own Application Insights instances feeding into a shared Log Analytics workspace. A metric alert fires when DTU consumption exceeds 85% for 20 minutes.
+Both pods push telemetry to their own Application Insights instances feeding into a shared Log Analytics workspace. A metric alert fires when DTU consumption exceeds 85% for 30 minutes.
 
 ---
 
